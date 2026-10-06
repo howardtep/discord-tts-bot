@@ -9,6 +9,9 @@ import {
 const { DISCORD_TOKEN, OWNER_ID, ELEVENLABS_API_KEY } = process.env;
 let voiceId = process.env.VOICE_ID || "JBFqnCBsd6RMkjVDRZzb"; // ElevenLabs stock voice "George"
 const MODEL = process.env.ELEVENLABS_MODEL || "eleven_flash_v2_5"; // fastest model, half the credits per character
+// Audio tags like [laughs] or [whispers] only work on v3, so tagged messages switch to it.
+const TAG_MODEL = process.env.ELEVENLABS_TAG_MODEL || "eleven_v3";
+const hasTags = text => /\[[a-z][a-z ]*\]/i.test(text);
 const MAX_CHARS = 600;
 
 const missing = ["DISCORD_TOKEN", "OWNER_ID", "ELEVENLABS_API_KEY"].filter(k => !process.env[k]);
@@ -34,7 +37,7 @@ async function eleven(path, init = {}) {
 }
 async function speech(text) {
   const res = await eleven(`/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`, {
-    method: "POST", body: JSON.stringify({ text, model_id: MODEL }),
+    method: "POST", body: JSON.stringify({ text, model_id: hasTags(text) ? TAG_MODEL : MODEL }),
   });
   return Buffer.from(await res.arrayBuffer());
 }
@@ -132,7 +135,17 @@ const HELP = [
   "`/join` join your voice channel, then DM me anything and I'll say it there.",
   "`/leave` leave the call · `/skip` stop talking and clear the queue",
   "`/voices` list your ElevenLabs voices · `/voice <id>` switch voice",
+  "`/tags` emotion tags like `[laughs]` or `[whispers]` you can put in messages",
   "Commands work with `!` too, e.g. `!join`.",
+].join("\n");
+const TAGS = [
+  "Put tags in square brackets anywhere in a message, e.g. `[whispers] don't tell anyone [laughs]`.",
+  "Tagged messages use the v3 model: more expressive, a little slower, double the credits.",
+  "**Vocalization** `[laughs]` `[chuckles]` `[sighs]` `[gasps]` `[exhales]` `[clears throat]` `[crying]`",
+  "**Delivery** `[whispers]` `[shouts]` `[slowly]` `[quickly]` `[pause]` `[short pause]`",
+  "**Emotion** `[excited]` `[sarcastic]` `[curious]` `[nervous]` `[angry]` `[sad]` `[happy]` `[tired]`",
+  "**Character** `[pirate voice]` `[british accent]` `[robotic]` `[dramatically]` `[deadpan]`",
+  "Tags are suggestions to the model, so some voices follow them better than others.",
 ].join("\n");
 function leave() {
   joined = false; queue.length = 0; player.stop(true);
@@ -146,6 +159,7 @@ client.on(Events.MessageCreate, async msg => {
   const cmd = name.toLowerCase();
 
   if (cmd === "help") return msg.reply(HELP);
+  if (cmd === "tags") return msg.reply(TAGS);
   if (cmd === "join") {
     const channel = ownerChannel();
     if (!channel) return msg.reply("Join a voice channel in a server I'm in first.");
